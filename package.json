@@ -1,0 +1,35 @@
+{
+  "name": "sonic-assistant-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Opt-in browser acoustic motion events for AI assistants",
+  "scripts": {
+    "start": "node server.js",
+    "demo:bridge": "node scripts/demo-bridge.js",
+    "test": "node --test",
+    "test:browser": "node scripts/browser-bridge-smoke.js",
+    "check": "node --check server.js && node --check src/dsp.js && node --check src/audio.js && node --check src/app.js && node --check src/scene.js && node --check src/bridge.js && node --check src/bridge-ui.js && node --check bridge/receiver.js && node --check bridge/mcp-events.js && node --check scripts/demo-bridge.js",
+    "lint": "eslint .",
+    "typecheck": "tsc -p jsconfig.json",
+    "build": "node scripts/build.js",
+    "build:pages": "node scripts/build-pages.js",
+    "pretypecheck": "npm run build:pages",
+    "test:microphone": "node scripts/browser-microphone-smoke.js"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "three": "0.186.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@types/node": "26.5.0",
+    "@types/three": "0.185.4",
+    "eslint": "10.10.0",
+    "globals": "17.12.0",
+    "typescript": "7.0.2"
+  },
+  "license": "MIT"
+}
