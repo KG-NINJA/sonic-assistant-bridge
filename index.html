@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Sonic Assistant Bridge — 動作検知イベント</title>
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <header><div class="brand"><span class="logo" aria-hidden="true">◎</span><div><h1>SONIC <b>ASSISTANT BRIDGE</b></h1><p>DERIVED FROM SONICFORCEFIELD · EXPERIMENTAL</p></div></div><span id="mode" class="badge" role="status" aria-atomic="true">STANDBY · 待機</span></header>
+  <main>
+    <section class="visual" aria-label="Three.js 接近・離反の可視化">
+      <div id="scene"></div>
+      <div class="scene-top"><span>01 / FIELD MONITOR</span><span id="engine">THREE.JS / 3D</span></div>
+      <div class="readout"><p id="direction">READY TO SENSE</p><h2 id="status" aria-live="polite">待機中</h2><p id="hint">測定を開始すると、周囲の動きを解析します。</p></div>
+      <div class="legend"><span class="approach">↘ 接近 / 内側へ</span><span class="recede">↗ 離反 / 外側へ</span><span class="motion">↔ 動き / 方向不明</span></div>
+      <p class="scene-note">中心 = PC　·　波は動きの模式表示です。距離・位置・人数は測定しません。</p>
+    </section>
+    <aside>
+      <section class="panel"><h2>測定コントロール</h2>
+        <p class="description">PCスピーカーから高周波音を出し、マイクで反射音の変化を捉えます。</p>
+        <label for="mic">入力マイク</label><select id="mic"><option value="">システム既定のマイク</option></select>
+        <p class="small">出力：OS既定のスピーカー。ヘッドホンを外し、PC付近のスピーカーを使用してください。</p>
+        <div class="settings"><div><label for="frequency">送信周波数</label><select id="frequency"><option value="20000">20.0 kHz · 標準</option><option value="20500">20.5 kHz</option><option value="21000">21.0 kHz</option><option value="19000">19.0 kHz · 可聴の可能性</option><option value="18000">18.0 kHz · 可聴の可能性</option></select></div><div><label for="threshold">感度</label><select id="threshold"><option value="1">超敏感・大きく反応</option><option value="3">微弱・低速</option><option value="5">高い</option><option value="8">標準</option><option value="12">低い</option></select></div></div>
+        <p class="small">超敏感：弱い変化が0.15秒続くと判定し、大きく表示します。音量は増やしません。環境音にも反応しやすいため、誤反応が多い場合は感度を下げてください。</p>
+        <label for="volume">送信レベル <output id="volume-value">2%</output></label><input id="volume" type="range" min="1" max="3" value="2">
+        <p id="tone-notice" class="small">デジタル振幅の設定です。実際の音圧ではありません。高音が聞こえる・不快な場合は停止してください。</p>
+        <p id="microphone-disclosure" class="small">開始ボタンを押すと、ブラウザの許可に基づいてマイクを使い、高周波音を出します。音声は録音・送信しません。停止または画面の非表示で終了します。</p>
+        <button id="start" class="primary" aria-describedby="microphone-disclosure tone-notice">マイクで測定を開始</button><div class="button-row"><button id="stop" disabled>停止</button><button id="recalibrate" disabled>再校正</button></div>
+        <p id="capture-state" class="capture-state" role="status" aria-atomic="true">マイク：停止 · 発音：停止</p>
+        <progress id="progress" max="1" value="0" aria-label="校正の進捗"></progress>
+        <p id="message" role="status">通常約8秒。会話・一時的な物音は許容し、雑音の区間を除外して自動延長します。PCの位置は固定してください。</p>
+        <p id="diagnostic" class="small">受信診断：未測定</p>
+      </section>
+      <section class="panel demo-panel"><h2>動きのデモ <span>マイク・発音なし</span></h2><div class="button-row"><button id="demo">デモを開始</button><select id="demo-motion" aria-label="デモの動き"><option value="cycle">自動切替</option><option value="APPROACH">接近</option><option value="WEAK">微細な動き</option><option value="OCCLUSION">遮蔽・受信低下</option><option value="RECEDE">離反</option><option value="MOTION">方向不明</option><option value="CALM">静止</option></select></div></section>
+    </aside>
+    <section class="panel analysis"><div class="section-heading"><h2>02 / 受信スペクトル</h2><span id="resolution">FFT 16384</span></div><canvas id="spectrum" aria-label="送信周波数を中心とした受信スペクトル"></canvas><div class="spectrum-labels"><span>−450 Hz / 離反側</span><span>送信音</span><span>＋450 Hz / 接近側</span></div></section>
+    <section class="panel metrics"><h2>03 / 検知状態</h2><div class="metric-grid"><div><span>動きの強さ</span><strong id="score">—</strong><small id="score-unit">dB / 校正基準超過</small></div><div><span>送信音の受信</span><strong id="pilot">—</strong><small>dBFS / peak</small></div><div><span>検知イベント</span><strong id="count">0</strong><small id="count-label">今回の測定</small></div></div><ol id="events" aria-label="検知イベント履歴"><li>検知イベントはまだありません</li></ol></section>
+    <section class="panel bridge-panel" aria-labelledby="bridge-heading">
+      <div class="section-heading"><h2 id="bridge-heading">04 / アシスタント向けイベント</h2><span>dot 未接続</span></div>
+      <p class="description">測定・デモの開始と停止、検知した動きだけを共通形式にします。音声・会話本文・スペクトルは送りません。動きの強さは dB で、確率や距離ではありません。</p>
+      <p id="bridge-state" role="status">イベント：停止中</p>
+      <label for="bridge-destination">イベントの送信先</label>
+      <select id="bridge-destination"><option value="preview">ブラウザ内のプレビューのみ</option><option id="bridge-local-option" value="local">この PC の模擬受信先</option></select>
+      <p id="bridge-endpoint" class="small">送信先はこのページと同じローカルサーバーの /bridge/events です。外部 URL や秘密の入力は不要です。</p>
+      <div class="button-row"><button id="bridge-enable" disabled>模擬受信への送信を有効にする</button><button id="bridge-disable" disabled>送信を無効にする</button></div>
+      <p id="bridge-delivery" role="status">送信：無効 · ブラウザ内のプレビューのみ</p>
+      <p class="small">初期状態は送信無効です。非表示にすると測定と送信を停止します。受信失敗時の再送はありません。模擬受信の確認は dot への到達や実機の検知精度を示しません。</p>
+      <ol id="bridge-history" aria-label="アシスタント向けイベント履歴"><li>イベントはまだありません</li></ol>
+      <details><summary>最新イベントの内容</summary><pre id="bridge-preview">—</pre></details>
+    </section>
+  </main>
+  <footer>音声はブラウザ内だけで処理し、録音・外部送信しません。人以外の動きにも反応します。静止した人の在席・防犯用途の保証はありません。画面を前面にして使用してください。<br>Derived from <a href="https://github.com/KG-NINJA/SonicForceField" target="_blank" rel="noreferrer">SonicForceField</a> · <a href="./LICENSE">MIT license</a> · <a href="./vendor/LICENSE">Three.js license</a><br>Based on <a href="https://www.microsoft.com/en-us/research/project/soundwave-using-the-doppler-effect-to-sense-gestures/" target="_blank" rel="noreferrer">SoundWave / Microsoft Research</a> · Inspired by <a href="https://github.com/KG-NINJA/ForceField-Wi-Fi-fluctuation-detection" target="_blank" rel="noreferrer">ForceField Wi-Fi</a></footer>
+  <script type="module" src="./src/app.js"></script>
+</body>
+</html>
