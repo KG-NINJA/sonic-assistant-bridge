@@ -2,13 +2,13 @@
 
 Experimental browser-based acoustic motion sensing with small, audio-free events for AI assistants. Derived from [KG-NINJA/SonicForceField](https://github.com/KG-NINJA/SonicForceField/tree/13fb3ba9c89a2bef36c364513dd4f2cc69709f0a).
 
-[日本語 README](README.ja.md) · [Bridge setup and event contract](docs/assistant-bridge.md) · [Publication status](docs/publication.md)
+[日本語 README](README.ja.md) · [Build your own private bridge](docs/build-your-own.md) · [Bridge setup and event contract](docs/assistant-bridge.md) · [Publication status](docs/publication.md)
 
 [Repository](https://github.com/KG-NINJA/sonic-assistant-bridge) · [English app](https://kg-ninja.github.io/sonic-assistant-bridge/) · [日本語アプリ](https://kg-ninja.github.io/sonic-assistant-bridge/ja/)
 
 The original SonicForceField repository and site remain separate and unchanged. The owned source and additions in this derivative are available under the [MIT license](LICENSE). Deployment status is recorded in the repository Actions runs; a successful local build alone does not establish public delivery.
 
-The app supports explicit microphone sensing and a synthetic demo. It emits a high-frequency pilot tone during microphone sensing, analyzes Doppler sidebands and tone attenuation, and previews lifecycle and motion events. **dot is not connected.** Delivery starts disabled; an optional local mock receiver is the only configured destination. Server-side authenticated MCP Events code and private-capture UI are prepared for synthetic testing; no private Site, live subscription, or credentials have been created. See [connection prerequisites and blockers](docs/private-connection.md).
+The app supports explicit microphone sensing and a synthetic demo. It emits a high-frequency pilot tone during microphone sensing, analyzes Doppler sidebands and tone attenuation, and previews lifecycle and motion events. **dot is not connected.** Delivery starts disabled; an optional local mock receiver is the only configured destination. Server-side authenticated MCP Events code and private-capture UI are prepared for synthetic testing; a private Site has been registered but is not published, and no live subscription or callback signing secret has been created. See [connection prerequisites and blockers](docs/private-connection.md).
 
 ## Run locally
 

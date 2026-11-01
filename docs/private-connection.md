@@ -2,7 +2,7 @@
 
 現時点では **dot 未接続**です。公開 Pages の「04」は、ページ内プレビューとローカル模擬受信の操作でした。GitHub Pages には認証サーバーがなく、送信先を選べるようにするだけでは dot へ届けられません。
 
-今回のコードは、非公開の認証済み測定画面から同じオリジンの受信 API へメタデータを渡し、サーバーで MCP Events を扱うための準備です。Site、接続、購読、資格情報、外部宛先は作成・有効化していません。公開 Pages と元の SonicForceField は維持します。
+今回のコードは、非公開の認証済み測定画面から同じオリジンの受信 API へメタデータを渡し、サーバーで MCP Events を扱うための準備です。所有者の承認後、専用の非公開 Site を登録しましたが、まだ未公開です。プラグイン接続・実購読・callback 署名秘密・外部配送は未設定です。公開 Pages と元の SonicForceField は維持します。
 
 ## 想定する経路
 
@@ -35,14 +35,16 @@ HTTP 境界の一般形は、サーバー側で認証を検証する関数を受
 
 ## 実接続を止めている条件
 
-1. **永続的なアクセスの承認**：非公開 Sonic Site とその canonical plugin、動きのメタデータをこの会話へ届ける購読の作成。承認待ちとして作成していません。料金契約や公開範囲の変更は含みません。
+1. **承認と登録の状態**：所有者限定の Site・canonical plugin・指定された会話への動きメタデータ通知は承認済みです。専用 Site の登録と所有者限定の確認まで完了し、公開・プラグイン作成・購読は未完了です。料金契約や公開範囲の変更は含みません。別の利用者の構築を承認するものでもありません。
 2. **Sites で Events を認識することの確認**：Sites は MCP ツールと自動作成される private plugin を文書化しています。一般の MCP Events は dots に対応しますが、この Site/plugin の Events カタログ発見・購読が動くことはまだ実証していません。
-3. **接続時の宛先保護**：公式 MCP Events は、接続のたびの DNS 検証と非公開アドレスへの接続防止を要求します。Sites の Worker は HTTP 接続だけで raw TCP が使えません。Worker の `fetch` と事前 DNS 検査だけでは、検証した IP へ実際に接続することを確認できません。`resolveOverride` は外部の任意 callback 用の IP 固定ではありません。そのため **Sites 上の実送信は無効のまま**です。Node 専用配送コードの合成試験は、この制約を解消した証拠ではありません。
+3. **接続時の宛先保護**：公式 MCP Events は、接続のたびの DNS 検証と非公開アドレスへの接続防止を要求します。Sites の Worker は HTTP 接続だけで raw TCP が使えません。Worker の `fetch` と事前 DNS 検査だけでは、検証した IP へ実際に接続することを確認できません。`resolveOverride` は外部の任意 callback 用の IP 固定ではありません。現在の Workers `node:http` は `lookup` / `createConnection` が非対応で、`node:https` も `fetch` のラッパーです。元ホスト名の `servername` / socket 制御を使う Node コードの移植では解決しません。そのため **Sites 上の実送信は無効のまま**です。Node 専用配送コードの合成試験は、この制約を解消した証拠ではありません。
 4. **本番の状態管理**：所有者に結び付いた購読、サーバー限定の署名用秘密、期限、配送予約・重複抑制を原子的に管理する永続ストアが必要です。メモリー内の試験ストアは本番用途に利用できません。再起動や複数 Worker 間でも制限を維持する実装・検証が必要です。プロセス内の中止だけでは別 Worker の進行中配送を中止できないため、解除と配送開始を直列化するなど、ホストに適した制御も必要です。
+
+5. **配備ツールの利用不能**：今回の実行環境には Sites の公式初期化・source workflow ヘルパーが見つからず、クラウドスキルからの該当リソース取得も失敗しました。既に登録した Site を保持し、対応ヘルパーが利用可能な環境で同じ Site の準備・公開を再開する必要があります。認証処理や配備手順を独自の方法で代替していません。
 
 必要な次の判断は、Sites が提供する適切な送信保護を確認するか、接続時 IP 固定を提供できる別の認証済み受信・配送ホストを選ぶことです。新しいホストや料金、ネットワーク設定を勝手に追加しません。承認だけでは技術的な接続保護の未確認を解消できません。
 
-## 承認後にも必要な検証
+## 配備・実配送の前に必要な検証
 
 - 実際に返された Site ID・HTTPS URL と private audience を確認し、固定設定へ反映する。
 - Site が作成するプラグインを使い、接続済みイベントソースと `events/list` に `sonic.motion` が出ることを確認する。
@@ -54,4 +56,4 @@ HTTP 境界の一般形は、サーバー側で認証を検証する関数を受
 
 試験で使う固定のサンプル署名データ・メモリー購読・模擬 HTTP 応答は合成データです。実サービスの鍵やアクセス権を作ったものではありません。
 
-参照（2026-11-01 確認）：[OpenAI MCP Events](https://developers.openai.com/plugins/build/mcp-events)、[Cloudflare Request / redirect と resolveOverride](https://developers.cloudflare.com/workers/runtime-apis/request/)。Sites の認証・MCP・実行環境の境界は利用可能な Sites スキルの `identity-and-secrets.md`、`site-mcp-server.md`、`SKILL.md` で確認しました。
+参照（2026-11-01 確認）：[OpenAI MCP Events](https://developers.openai.com/plugins/build/mcp-events)、[Cloudflare Request / redirect と resolveOverride](https://developers.cloudflare.com/workers/runtime-apis/request/)、[Workers HTTP](https://developers.cloudflare.com/workers/runtime-apis/nodejs/http/)、[Workers HTTPS](https://developers.cloudflare.com/workers/runtime-apis/nodejs/https/)。Sites の認証・MCP・実行環境の境界は利用可能な Sites スキルの `identity-and-secrets.md`、`site-mcp-server.md`、`SKILL.md` で確認しました。

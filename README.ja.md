@@ -2,13 +2,13 @@
 
 PC のスピーカーとマイクで音響的な動きの候補を検知し、AI アシスタント向けに音声を含まないイベントを生成する実験アプリです。[KG-NINJA/SonicForceField](https://github.com/KG-NINJA/SonicForceField/tree/13fb3ba9c89a2bef36c364513dd4f2cc69709f0a) から派生しています。
 
-[English README](README.md) · [導入・イベント形式](docs/assistant-bridge.md) · [公開状況と手順](docs/publication.md)
+[English README](README.md) · [自分用の非公開ブリッジを作る](docs/build-your-own.ja.md) · [導入・イベント形式](docs/assistant-bridge.md) · [公開状況と手順](docs/publication.md)
 
 [リポジトリ](https://github.com/KG-NINJA/sonic-assistant-bridge) · [英語アプリ](https://kg-ninja.github.io/sonic-assistant-bridge/) · [日本語アプリ](https://kg-ninja.github.io/sonic-assistant-bridge/ja/)
 
 元の SonicForceField リポジトリ・公開サイトは変更していません。本派生版の所有者が権利を持つ元コードと追加コードは [MIT ライセンス](LICENSE) で提供します。配信結果はリポジトリの Actions で確認してください。ローカルのビルド成功だけで公開成功とは扱いません。
 
-明示的なマイク測定と、マイク・スピーカーを使わない合成デモに対応します。**dot は未接続です。** イベント送信は初期無効で、設定済みの送信先はローカル模擬受信だけです。認証済み MCP Events サーバーと非公開測定画面のコードを追加し、合成試験を用意しました。Site・購読・資格情報は作成していません。[接続に必要な設定と残る制約](docs/private-connection.md)を確認してください。
+明示的なマイク測定と、マイク・スピーカーを使わない合成デモに対応します。**dot は未接続です。** イベント送信は初期無効で、設定済みの送信先はローカル模擬受信だけです。認証済み MCP Events サーバーと非公開測定画面のコードを追加し、合成試験を用意しました。専用の非公開 Site は登録済みですが未公開で、実購読・callback 署名秘密は未作成です。[接続に必要な設定と残る制約](docs/private-connection.md)を確認してください。
 
 ## ローカル起動
 
