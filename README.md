@@ -8,7 +8,7 @@ Experimental browser-based acoustic motion sensing with small, audio-free events
 
 The original SonicForceField repository and site remain separate and unchanged. The owned source and additions in this derivative are available under the [MIT license](LICENSE). Deployment status is recorded in the repository Actions runs; a successful local build alone does not establish public delivery.
 
-The app supports explicit microphone sensing and a synthetic demo. It emits a high-frequency pilot tone during microphone sensing, analyzes Doppler sidebands and tone attenuation, and previews lifecycle and motion events. **dot is not connected.** Delivery starts disabled; an optional local mock receiver is the only implemented destination.
+The app supports explicit microphone sensing and a synthetic demo. It emits a high-frequency pilot tone during microphone sensing, analyzes Doppler sidebands and tone attenuation, and previews lifecycle and motion events. **dot is not connected.** Delivery starts disabled; an optional local mock receiver is the only configured destination. Server-side authenticated MCP Events code and private-capture UI are prepared for synthetic testing; no private Site, live subscription, or credentials have been created. See [connection prerequisites and blockers](docs/private-connection.md).
 
 ## Run locally
 
@@ -67,7 +67,7 @@ This experiment does not identify people, measure distance, establish occupancy,
 
 Microphone samples are processed only in browser memory. The app does not record or upload audio, use analytics, or call an external detection API. Event metadata can still reveal activity times; check it before sharing. Preview and local mock state are in memory, without durable storage or delivery guarantees. A static Pages site sends no events to a backend; normal requests for site files and the host's access logs are separate from local sensing.
 
-The MCP Events adapter builds validated candidate envelopes without network I/O. Real dot integration would require an authenticated MCP server, subscriptions, callback verification, secure server-side signing, and delivery handling. This project creates no connection or signing secret and embeds no credentials in the browser.
+The MCP Events service adds authenticated HTTP boundaries, signed callback verification, bounded delivery, and unsubscribe handling. Its synthetic store cannot be used for production. Live integration still requires an approved authenticated host, atomic durable storage, and a proven safe outbound transport. The included Node HTTPS transport pins a validated IPv4 address; it cannot run as-is on Sites Workers. Sites-specific event discovery and actual dot receipt remain unverified. No connection or signing secret is created or embedded in the browser.
 
 ## Development and validation
 
@@ -80,9 +80,10 @@ npm run build
 npm run build:pages
 npm run test:browser
 npm run test:microphone
+npm run test:private-bridge
 ```
 
-The last two commands require Playwright and Chromium in the development environment. Existing installations can be selected with `PLAYWRIGHT_MODULE` and `CHROMIUM_EXECUTABLE`; these tools are not production dependencies. `test:browser` checks the synthetic UI while forbidding microphone and audio-context creation. `test:microphone` exercises browser media APIs using Chromium's fake microphone and synthetic WAV input, with speaker output muted. It checks explicit start, error paths, and resource cleanup, not physical microphones, speakers, or real-world sensing performance. Results and screenshots go to `artifacts/`; see [recorded validation](docs/validation.md) for the actual tested scope.
+The browser commands require Playwright and Chromium in the development environment. Existing installations can be selected with `PLAYWRIGHT_MODULE` and `CHROMIUM_EXECUTABLE`; these tools are not production dependencies. `test:browser` checks the synthetic UI while forbidding microphone and audio-context creation. `test:microphone` exercises browser media APIs using Chromium's fake microphone and synthetic WAV input, with speaker output muted. It checks explicit start, error paths, and resource cleanup, not physical microphones, speakers, or real-world sensing performance. Results and screenshots go to `artifacts/`; see [recorded validation](docs/validation.md) for the actual tested scope.
 
 - `dist/`: portable local runtime with Three.js; run `node server.js` inside it with Node.js 22+. Use the source checkout for development checks.
 - `pages/`: static English site, with Japanese at `pages/ja/`; only this directory is intended for Pages deployment.

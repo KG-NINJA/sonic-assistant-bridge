@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 const root = new URL('../', import.meta.url);
 const output = new URL('dist/', root);
 const files = ['index.html', 'style.css', 'server.js', 'LICENSE', 'THIRD_PARTY_NOTICES.md', 'src/app.js', 'src/audio.js', 'src/dsp.js', 'src/scene.js',
-  'src/bridge.js', 'src/bridge-ui.js', 'bridge/receiver.js', 'bridge/mcp-events.js', 'docs/assistant-bridge.md',
+  'src/bridge.js', 'src/bridge-ui.js', 'bridge/receiver.js', 'bridge/mcp-events.js', 'docs/assistant-bridge.md', 'docs/private-connection.md',
   'start-sonic-forcefield.cmd'];
 for (const file of files) {
   const target = new URL(file, output);

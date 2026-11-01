@@ -36,6 +36,11 @@ test('static project-prefix builds resolve all assets and language links without
   }
   assert.equal((await fetch(origin + '/sonic-assistant-bridge/server.js')).status, 404);
   assert.equal((await fetch(origin + '/sonic-assistant-bridge/bridge/events')).status, 404);
+  for (const file of ['bridge/service.js', 'bridge/private-handler.js', 'bridge/https-callback.js', 'api/bridge/status']) {
+    assert.equal((await fetch(origin + '/sonic-assistant-bridge/' + file)).status, 404);
+  }
+  const publicHtml = await readFile(new URL('../pages/index.html', import.meta.url), 'utf8');
+  assert.doesNotMatch(publicHtml, /data-private-bridge(?:-test)?=/);
   assert.ok(!(await readdir(new URL('../pages/', import.meta.url))).includes('node_modules'));
   const source = await readFile(new URL('../src/dsp.js', import.meta.url), 'utf8');
   assert.equal(await readFile(new URL('../pages/src/dsp.js', import.meta.url), 'utf8'), english(source));

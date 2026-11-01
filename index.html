@@ -36,12 +36,19 @@
     <section class="panel analysis"><div class="section-heading"><h2>02 / 受信スペクトル</h2><span id="resolution">FFT 16384</span></div><canvas id="spectrum" aria-label="送信周波数を中心とした受信スペクトル"></canvas><div class="spectrum-labels"><span>−450 Hz / 離反側</span><span>送信音</span><span>＋450 Hz / 接近側</span></div></section>
     <section class="panel metrics"><h2>03 / 検知状態</h2><div class="metric-grid"><div><span>動きの強さ</span><strong id="score">—</strong><small id="score-unit">dB / 校正基準超過</small></div><div><span>送信音の受信</span><strong id="pilot">—</strong><small>dBFS / peak</small></div><div><span>検知イベント</span><strong id="count">0</strong><small id="count-label">今回の測定</small></div></div><ol id="events" aria-label="検知イベント履歴"><li>検知イベントはまだありません</li></ol></section>
     <section class="panel bridge-panel" aria-labelledby="bridge-heading">
-      <div class="section-heading"><h2 id="bridge-heading">04 / アシスタント向けイベント</h2><span>dot 未接続</span></div>
+      <div class="section-heading"><h2 id="bridge-heading">04 / アシスタント向けイベント</h2><span id="bridge-connection">dot 未接続</span></div>
       <p class="description">測定・デモの開始と停止、検知した動きだけを共通形式にします。音声・会話本文・スペクトルは送りません。動きの強さは dB で、確率や距離ではありません。</p>
+      <p id="bridge-availability" class="small">公開ページではプレビューのみ利用できます。ローカル模擬受信と認証済みの非公開サイト連携は、別途設定が必要です。</p>
+      <p class="small"><a href="https://github.com/KG-NINJA/sonic-assistant-bridge/blob/main/docs/private-connection.md" target="_blank" rel="noreferrer">連携の設定ガイド</a></p>
       <p id="bridge-state" role="status">イベント：停止中</p>
       <label for="bridge-destination">イベントの送信先</label>
-      <select id="bridge-destination"><option value="preview">ブラウザ内のプレビューのみ</option><option id="bridge-local-option" value="local">この PC の模擬受信先</option></select>
-      <p id="bridge-endpoint" class="small">送信先はこのページと同じローカルサーバーの /bridge/events です。外部 URL や秘密の入力は不要です。</p>
+      <select id="bridge-destination"><option value="preview">ブラウザ内のプレビューのみ</option><option id="bridge-local-option" value="local" disabled>この PC の模擬受信先</option><option id="bridge-private-option" value="private" disabled hidden>認証済みのアシスタント連携</option></select>
+      <p id="bridge-endpoint" class="small">公開ページには受信サーバーがありません。外部 URL や秘密を入力して送信する機能はありません。</p>
+      <div id="bridge-private-controls" hidden>
+        <p id="bridge-private-status" role="status">認証と購読：未確認</p>
+        <div class="button-row"><button id="bridge-check">認証と購読を確認する</button><button id="bridge-unsubscribe" disabled>購読を解除する</button></div>
+        <p class="small">送信の無効化はこのページの送信を止めます。購読の解除は別の操作です。コールバックの受理は dot の処理・応答を保証しません。</p>
+      </div>
       <div class="button-row"><button id="bridge-enable" disabled>模擬受信への送信を有効にする</button><button id="bridge-disable" disabled>送信を無効にする</button></div>
       <p id="bridge-delivery" role="status">送信：無効 · ブラウザ内のプレビューのみ</p>
       <p class="small">初期状態は送信無効です。非表示にすると測定と送信を停止します。受信失敗時の再送はありません。模擬受信の確認は dot への到達や実機の検知精度を示しません。</p>

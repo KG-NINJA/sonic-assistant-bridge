@@ -24,7 +24,7 @@ test('project event definition describes the shared strict event contract', () =
   assert.equal(eventDefinition.name, 'sonic.motion');
   assert.deepEqual(eventDefinition.delivery, ['webhook']);
   assert.deepEqual(eventDefinition.inputSchema, {
-    type: 'object', properties: {}, additionalProperties: false,
+    type: 'object', properties: { includeSynthetic: { type: 'boolean', default: false } }, additionalProperties: false,
   });
   assert.deepEqual(eventDefinition.payloadSchema, MOTION_EVENT_SCHEMA);
   assert.notEqual(eventDefinition.payloadSchema, MOTION_EVENT_SCHEMA);

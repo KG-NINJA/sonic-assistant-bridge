@@ -100,3 +100,17 @@ public HTTPS health, physical reception, motion accuracy, stationary presence,
 distance, identity, sound pressure, or real dot delivery. The MCP Events adapter
 remains a pure conversion with local mock receipt; it creates no live connection
 or secrets. No real microphone or physical speaker was used in cloud tests.
+# 認証済みイベント連携の追加試験（2026-11-01、未配備）
+
+公開版 `fc6296750c61ee64b94b65c877aecb5d7b4ef014` を基にした `codex/authenticated-events` のソース試験です。Site の作成、秘密の発行、実購読、外部 callback 配送は行っていません。この記録は dot 接続成功を示しません。
+
+- `npm test`：117 件成功、失敗 0。既存センサー試験に加え、認証・Origin・本文制限、MCP の署名付き challenge、所有者分離、期限・重複・連発抑制、秘密更新、解除の競合、Node DNS 固定と接続中止を合成データで確認。
+- `npm run lint`、`npm run typecheck`（英日 Pages ビルドを含む）、`npm run check`、`npm run build`：成功。
+- `npm run test:browser`：12 群成功。ループバック模擬受信のみで、マイク取得・AudioContext 作成・外部要求 0。
+- `npm run test:private-bridge`：9 群成功。26 件の API 要求はすべてブラウザ試験の模擬応答。実認証・実購読・実 callback 配送・音声取得は 0。スクリーンショットも `testMode: true` の模擬表示。
+- `npm run test:microphone`：12 群成功。Chromium の仮想マイク・合成 WAV・音出力ミュートで開始停止、異常系、非表示停止、英日資産を再確認。物理マイク・実音響精度は未検証。
+- API から購読・署名付き模擬 callback・重複抑制・購読解除までの統合試験も成功。callback の 2xx は会話での受信や dot の応答を証明しない。
+
+実行結果は `artifacts/authenticated-events-unit.log`、`artifacts/browser-bridge-smoke.json`、`artifacts/browser-private-bridge-smoke.json`、`artifacts/browser-microphone-smoke.json`。試験用の固定署名データは公開された合成データであり、実サービスの秘密ではありません。
+
+本番の永続ストア、複数 Worker 間の解除と配送開始の制御、Sites 上での安全な callback 接続、Site plugin のイベント発見、会話での受信確認は残っています。[接続条件と制約](private-connection.md)を参照してください。既存の公開 Pages はこの作業で更新していません。

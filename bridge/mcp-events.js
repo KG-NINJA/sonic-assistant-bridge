@@ -3,9 +3,9 @@ import { MOTION_EVENT_SCHEMA, validateMotionEvent } from '../src/bridge.js';
 // Project-defined name, not an existing dot API or an installed event source.
 export const eventDefinition = Object.freeze({
   name: 'sonic.motion',
-  description: 'Experimental acoustic motion and explicit session lifecycle events. Does not establish occupancy, identity, distance, or confidence.',
+  description: 'Experimental acoustic motion events. Live motion only by default; synthetic motion requires an explicit filter. Does not establish occupancy, identity, distance, or confidence.',
   delivery: ['webhook'],
-  inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+  inputSchema: { type: 'object', properties: { includeSynthetic: { type: 'boolean', default: false } }, additionalProperties: false },
   payloadSchema: structuredClone(MOTION_EVENT_SCHEMA),
 });
 

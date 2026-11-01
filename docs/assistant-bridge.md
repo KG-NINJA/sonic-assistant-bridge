@@ -74,7 +74,7 @@ Chrome / Edge で HTTPS または localhost のページを開き、実際の入
 
 [公式 MCP Events ドキュメント](https://developers.openai.com/plugins/build/mcp-events)には dots 対応が記載されています。ただし実接続には、認証された MCP サーバー、`events/list`・`events/subscribe`・`events/unsubscribe`、購読の永続化とアクセス確認が必要です。ChatGPT が購読時に渡す callback と署名用秘密をサーバー側で管理し、HTTPS 宛先を接続時に検証し、署名付き challenge を確認してから配送します。ローカル・非公開 IP とリダイレクトを拒否し、Standard Webhooks 署名、期限、解除、再試行、重複を扱う必要があります。
 
-この試作はその認証サーバーや実配送を実装していません。ブラウザーへ秘密を埋め込まず、秘密の発行、プラグイン接続、外部 callback への送信、dot の応答確認も行っていません。ローカルで envelope が生成できることは、dot 接続が動くことの証明ではありません。
+認証境界・購読処理・署名・配送抑制・解除のサーバーコードと非公開測定画面を追加しました。ただし、本番の永続ストアと Sites 上での安全な接続時 IP 検証は未整備です。実配送は無効で、秘密の発行、プラグイン接続、外部 callback への送信、dot の応答確認は行っていません。[非公開接続の構成・承認・技術上の条件](private-connection.md)を参照してください。合成試験の成功は dot 接続の証明ではありません。
 
 ## 公開・ライセンス
 
