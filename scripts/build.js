@@ -4,8 +4,10 @@ import { fileURLToPath } from 'node:url';
 
 const root = new URL('../', import.meta.url);
 const output = new URL('dist/', root);
-const files = ['index.html', 'style.css', 'server.js', 'LICENSE', 'THIRD_PARTY_NOTICES.md', 'src/app.js', 'src/audio.js', 'src/dsp.js', 'src/scene.js',
-  'src/bridge.js', 'src/bridge-ui.js', 'bridge/receiver.js', 'bridge/mcp-events.js', 'docs/assistant-bridge.md',
+const files = ['index.html', 'style.css', 'server.js', 'LICENSE', 'THIRD_PARTY_NOTICES.md', 'README.md', 'README.ja.md', 'src/app.js', 'src/audio.js', 'src/dsp.js', 'src/scene.js',
+  'src/bridge.js', 'src/bridge-ui.js', 'bridge/receiver.js', 'bridge/mcp-events.js', 'docs/assistant-bridge.md', 'docs/private-connection.md',
+  'docs/build-your-own.md', 'docs/build-your-own.ja.md', 'docs/durable-state.md', 'docs/durable-state.ja.md',
+  'docs/validation.md', 'docs/publication.md',
   'start-sonic-forcefield.cmd'];
 for (const file of files) {
   const target = new URL(file, output);

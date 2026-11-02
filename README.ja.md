@@ -2,13 +2,13 @@
 
 PC のスピーカーとマイクで音響的な動きの候補を検知し、AI アシスタント向けに音声を含まないイベントを生成する実験アプリです。[KG-NINJA/SonicForceField](https://github.com/KG-NINJA/SonicForceField/tree/13fb3ba9c89a2bef36c364513dd4f2cc69709f0a) から派生しています。
 
-[English README](README.md) · [導入・イベント形式](docs/assistant-bridge.md) · [公開状況と手順](docs/publication.md)
+[English README](README.md) · [自分用の非公開ブリッジを作る](docs/build-your-own.ja.md) · [導入・イベント形式](docs/assistant-bridge.md) · [公開状況と手順](docs/publication.md)
 
 [リポジトリ](https://github.com/KG-NINJA/sonic-assistant-bridge) · [英語アプリ](https://kg-ninja.github.io/sonic-assistant-bridge/) · [日本語アプリ](https://kg-ninja.github.io/sonic-assistant-bridge/ja/)
 
 元の SonicForceField リポジトリ・公開サイトは変更していません。本派生版の所有者が権利を持つ元コードと追加コードは [MIT ライセンス](LICENSE) で提供します。配信結果はリポジトリの Actions で確認してください。ローカルのビルド成功だけで公開成功とは扱いません。
 
-明示的なマイク測定と、マイク・スピーカーを使わない合成デモに対応します。**dot は未接続です。** イベント送信は初期無効で、実装済みの送信先は明示的に有効化するローカル模擬受信だけです。
+明示的なマイク測定と、マイク・スピーカーを使わない合成デモに対応します。**dot は未接続です。** イベント送信は初期無効で、設定済みの送信先はローカル模擬受信だけです。認証済み MCP Events サーバーと非公開測定画面のコードを追加し、合成試験を用意しました。専用の非公開 Site は登録済みですが未公開で、実購読・callback 署名秘密は未作成です。[接続に必要な設定と残る制約](docs/private-connection.md)を確認してください。
 
 ## ローカル起動
 
@@ -69,7 +69,7 @@ npm run demo:bridge
 
 マイクサンプルはブラウザーのメモリー内で処理し、録音・アップロードしません。分析サービスや外部の検知 API も使いません。状態や日時だけのイベントでも行動時間の手掛かりになるため、共有する前に内容を確認してください。プレビューと模擬受信の状態はメモリー上だけで、永続保存や配送保証はありません。静的 Pages ではバックエンドへのイベント送信はなく、サイトファイル取得とホストのアクセスログはマイク処理とは別です。
 
-MCP Events アダプターは配送候補の形式を作る純粋な変換です。実際に dot へ接続するには、認証された MCP サーバー、購読、callback 検証、サーバー側署名と配送処理が必要です。この試作は接続や秘密を作成せず、ブラウザーへ認証情報を埋め込みません。
+MCP Events の認証境界、購読、callback 検証、サーバー側署名と配送抑制のコードを追加しました。暗号化 D1 アダプターと複数 Worker の配送予約・解除制御を実装し、ローカル SQLite で試験しました。実 D1・移行・実行時暗号鍵の設定、安全な外部通信、Sites での Events 発見と実受信は未確認のため、実配送は無効です。[永続状態と Site への組み込み](docs/durable-state.ja.md)を参照してください。この試作は接続や秘密を作成せず、ブラウザーへ認証情報を埋め込みません。
 
 ## 開発・検証
 
@@ -82,9 +82,10 @@ npm run build
 npm run build:pages
 npm run test:browser
 npm run test:microphone
+npm run test:private-bridge
 ```
 
-最後の 2 コマンドは開発環境に Playwright と Chromium が必要です。既存インストールは `PLAYWRIGHT_MODULE` と `CHROMIUM_EXECUTABLE` で指定できます。本番の依存関係には含めません。`test:browser` はマイク取得・AudioContext 作成を禁止して合成 UI を確認します。`test:microphone` は Chromium の仮想マイクへ合成 WAV を入力し、発音をミュートしてブラウザーの media API、開始・異常系・後始末を確認します。物理マイク・実スピーカー・実環境の検知性能の試験ではありません。結果と画像は `artifacts/`、実行済みの範囲は[検証記録](docs/validation.md)を参照してください。
+最後の 3 コマンドは開発環境に Playwright と Chromium が必要です。既存インストールは `PLAYWRIGHT_MODULE` と `CHROMIUM_EXECUTABLE` で指定できます。本番の依存関係には含めません。`test:browser` はマイク取得・AudioContext 作成を禁止して合成 UI を確認します。`test:microphone` は Chromium の仮想マイクへ合成 WAV を入力し、発音をミュートしてブラウザーの media API、開始・異常系・後始末を確認します。物理マイク・実スピーカー・実環境の検知性能の試験ではありません。結果と画像は `artifacts/`、実行済みの範囲は[検証記録](docs/validation.md)を参照してください。
 
 - `dist/`：Three.js を同梱したローカル実行用。Node.js 22 以降で、このディレクトリ内から `node server.js` を実行します。開発の検証コマンドはソース側で実行してください。
 - `pages/`：静的な英語サイト、日本語は `pages/ja/`。Pages への配置対象はこのディレクトリだけです。

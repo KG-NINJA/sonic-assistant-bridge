@@ -12,7 +12,8 @@ test('local app serves only explicit public assets and disallows writes', async 
     assert.equal(r.status, 200, path); assert.ok((await r.text()).length > 0);
     assert.match(r.headers.get('content-security-policy'), /connect-src 'self'/);
   }
-  for (const path of ['/package.json', '/server.js', '/.git/config', '/..%2fpackage.json', '/missing']) {
+  for (const path of ['/package.json', '/server.js', '/.git/config', '/..%2fpackage.json', '/missing',
+    '/bridge/d1-store.js', '/bridge/sites-receiver.js', '/migrations/0001_bridge_state.sql']) {
     assert.equal((await fetch(origin + path)).status, 404, path);
   }
   assert.equal((await fetch(origin, { method: 'POST', body: 'no' })).status, 405);
