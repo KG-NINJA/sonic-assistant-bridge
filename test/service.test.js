@@ -62,7 +62,7 @@ test('signed fresh challenge must be echoed before subscription becomes active',
   const input = `${request.headers['webhook-id']}.${request.headers['webhook-timestamp']}.${request.body}`;
   assert.equal(request.headers['webhook-signature'], 'v1,' + createHmac('sha256', Buffer.alloc(32, 7)).update(input).digest('base64'));
   assert.deepEqual(await f.service.status(owner), { authenticated: true, subscriptionActive: true, deliveryReady: true,
-    blockedReason: null, delivery: 'mcp-webhook', testMode: true });
+    blockedReason: null, delivery: 'mcp-webhook', testMode: true, pendingDispatches: 0, stopState: 'not-stopped' });
   assert.ok(!JSON.stringify(await f.service.status(owner)).includes(secret));
 });
 

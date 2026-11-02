@@ -51,7 +51,7 @@ flowchart LR
 
 1. 自分の構成について、非公開の利用対象、ホスト、サインイン方法、保存先・保存期間、送信経路を決めます。リソース・接続・購読・秘密・有料サービスを作る前に、該当する所有者の許可を得てください。提供元の現在の料金と制限も確認します。この手順は無料のホスティングや運用を保証しません。
 2. 測定画面と API の両方を認証します。サーバーの `{siteId, userId}` は検証済みの身元から決め、イベント JSON、URL パラメーター、利用者が自由に設定するヘッダーから取得しません。マイク許可、サイトへのログイン、プラグインへのアクセス、イベント購読、ホスティング費用は別々の権限です。
-3. 所有者ごとに分離し、原子的に更新できる永続ストアを実装します。署名用秘密は暗号化してサーバーだけに保持します。期限・解除・重複・連発制限に加え、複数 Worker にまたがる解除と送信開始の整合も必要です。試験用メモリーストアのフラグを変えても本番用にはなりません。
+3. [暗号化 D1 ストア](durable-state.ja.md)を自分のバインディング・移行・サーバー暗号鍵に接続し、実環境で検証します。署名用秘密は暗号化してサーバーだけに保持します。期限・解除・重複・連発制限に加え、複数 Worker にまたがる解除と送信開始の整合も必要です。試験用メモリーストアのフラグを変えても本番用にはなりません。
 4. 自分の固定 HTTPS オリジンで、測定 UI と `/api/bridge/*` を配信します。`data-private-bridge="true"` は認証済みの非公開 HTML にだけ付けます。これは操作を表示するための印で、認証の代わりにはなりません。ループバック試験用の印や、認証を迂回するトークンをブラウザーへ配布しないでください。`npm start` には非公開 API を取り付けていません。
 5. **自分の**認証済み MCP サーバーを**自分の**プラグインに接続します。`sonic.motion` を発見できることを確認し、自分の会話への購読を要求して、渡された callback の検証後に配送を有効にします。callback URL と署名用秘密は認証された購読手続きから受け取り、dot の URL を推測したり他人の購読をコピーしたりしません。公式手続きは `events/list`、`events/subscribe`、`events/unsubscribe` を使います。[OpenAI MCP Events](https://developers.openai.com/plugins/build/mcp-events)
 
@@ -59,15 +59,17 @@ flowchart LR
 
 ## 4. Node と Sites の違いを扱う
 
-認証済み Node ホストでは、次のように組み合わせます。**実行可能なデプロイスクリプトではなく構成例です。** 認証・永続ストア・HTTPS ホスト・非公開 HTML の配信と、利用するフレームワークの `Request`／`Response` 接続処理を別途実装する必要があります。
+認証済み Node ホストでは、次のように組み合わせます。**実行可能なデプロイスクリプトではなく構成例です。** Node で D1 に接続できる正式なホスト機能が必要で、Sites Worker でこの Node 配送処理を使う構成ではありません。 認証・対応 D1 接続・移行・暗号鍵・HTTPS ホスト・非公開 HTML の配信と、利用するフレームワークの `Request`／`Response` 接続処理を別途実装する必要があります。
 
 ```js
 import { createEventService } from './bridge/service.js';
 import { createPinnedCallbackTransport } from './bridge/https-callback.js';
 import { createPrivateBridgeHandler } from './bridge/private-handler.js';
+import { createD1Store } from './bridge/d1-store.js';
 
 const service = createEventService({
-  store: yourVerifiedDurableStore,
+  store: createD1Store({ database: yourSupportedD1Binding,
+    encryptionKey: yourServerOnlyCryptoKey, keyId: 'owner-state-v1' }),
   transport: createPinnedCallbackTransport(),
 });
 const handle = createPrivateBridgeHandler({
@@ -81,7 +83,7 @@ const handle = createPrivateBridgeHandler({
 
 Node 用配送処理は接続のたびに DNS 応答を確認し、許可した公開 IPv4 へ接続を固定しつつ TLS のホスト名検証を維持します。転送、非公開アドレス、IPv6 や混在する応答は拒否します。callback と互換性がない場合、同等の保護を備える経路ができるまで配送を無効のままにしてください。
 
-**Sites** では自分に返された Site の識別情報、非公開の利用対象、プラグインだけを使います。Sites 用アダプターが身元ヘッダーを信頼できるのは Sites Dispatch の後段だけで、公開 Node サーバーへそのまま取り付けると偽装されます。Node 用配送コードは Sites Worker の実装ではありません。DNS の事前検査と通常の `fetch` だけでは接続時の IP 保護を証明できず、`resolveOverride` も任意 callback の IP 固定ではありません。このリポジトリでは Sites の実配送経路、本番ストア、Sites での Events 発見を確認していません。未解決の条件が残る間は実送信を無効にします。[接続上の制約](private-connection.md)と[Cloudflare Request の設定](https://developers.cloudflare.com/workers/runtime-apis/request/)を参照してください。
+**Sites** では自分に返された Site の識別情報、非公開の利用対象、プラグインだけを使います。Sites 用アダプターが身元ヘッダーを信頼できるのは Sites Dispatch の後段だけで、公開 Node サーバーへそのまま取り付けると偽装されます。Node 用配送コードは Sites Worker の実装ではありません。DNS の事前検査と通常の `fetch` だけでは接続時の IP 保護を証明できず、`resolveOverride` も任意 callback の IP 固定ではありません。D1 アダプターと配送予約・解除制御は実装済みですが、Sites の実 D1 設定と Worker 動作、実配送経路、Events 発見は未確認です。未解決の条件が残る間は実送信を無効にします。[接続上の制約](private-connection.md)と[Cloudflare Request の設定](https://developers.cloudflare.com/workers/runtime-apis/request/)を参照してください。
 
 ## 5. 検証の段階を分ける
 

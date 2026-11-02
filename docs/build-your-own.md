@@ -51,7 +51,7 @@ Use the exported validator/schema; do not add audio, FFT arrays, transcripts, ar
 
 1. Choose the private audience, host, sign-in route, storage, retention, and outbound transport for your deployment. Obtain the relevant owner's authorization before creating resources, connections, subscriptions, secrets, or billable services. Review the provider's current prices and limits; this guide does not promise free hosting or operation.
 2. Authenticate both the capture page and its API. The server must derive `{siteId, userId}` from verified identity, not event JSON, URL parameters, or a client-chosen header. Browser microphone permission, website sign-in, plugin access, event subscription, and hosting expenditure are separate permissions.
-3. Assemble the service with durable, owner-isolated atomic storage. Keep signing secrets encrypted and server-only. Implement expiry, revocation, duplicate/rate limits, and coordination between unsubscribe and outgoing connections across all workers. The test memory store cannot become production storage by changing a flag.
+3. Configure the [encrypted D1 adapter](durable-state.md) with your supported binding, migration, and runtime encryption key, then validate it on your host. Keep signing secrets encrypted and server-only. Implement expiry, revocation, duplicate/rate limits, and coordination between unsubscribe and outgoing connections across all workers. The test memory store cannot become production storage by changing a flag.
 4. Serve the capture UI and fixed `/api/bridge/*` routes on your exact HTTPS origin. Inject `data-private-bridge="true"` only into the authenticated private page. This marker reveals controls; it grants no authorization. Never ship the loopback test marker or a browser bypass token. The draft server routes are not mounted by `npm start`.
 5. Connect **your own** authenticated MCP server through **your own** plugin. Discover `sonic.motion`, request a subscription for your chosen conversation, and verify the supplied callback before enabling delivery. Callback URLs and signing secrets originate in the authenticated subscription flow; do not invent a dot endpoint or copy another person's subscription. The official flow uses `events/list`, `events/subscribe`, and `events/unsubscribe`. [OpenAI MCP Events](https://developers.openai.com/plugins/build/mcp-events)
 
@@ -59,15 +59,17 @@ The private UI checks status only when you click **Check authentication and subs
 
 ## 4. Node and Sites require different integration work
 
-For an authenticated Node host, the assembly looks like this. **This is a sketch, not a runnable deployment:** you must implement the named authentication/storage dependencies, HTTPS hosting, private HTML serving, and your framework's `Request`/`Response` adapter.
+For an authenticated Node host, the assembly looks like this. **This is a sketch, not a runnable deployment:** the Node host needs supported D1 access; this does not run the Node sender on Sites Workers. In addition, you must supply authentication, supported D1 access, migrations, runtime encryption keys, HTTPS hosting, private HTML serving, and your framework's `Request`/`Response` adapter.
 
 ```js
 import { createEventService } from './bridge/service.js';
 import { createPinnedCallbackTransport } from './bridge/https-callback.js';
 import { createPrivateBridgeHandler } from './bridge/private-handler.js';
+import { createD1Store } from './bridge/d1-store.js';
 
 const service = createEventService({
-  store: yourVerifiedDurableStore,
+  store: createD1Store({ database: yourSupportedD1Binding,
+    encryptionKey: yourServerOnlyCryptoKey, keyId: 'owner-state-v1' }),
   transport: createPinnedCallbackTransport(),
 });
 const handle = createPrivateBridgeHandler({
@@ -81,7 +83,7 @@ const handle = createPrivateBridgeHandler({
 
 The Node transport checks DNS answers on each connection and pins an allowed public IPv4 address while preserving TLS hostname verification. It rejects redirects, nonpublic addresses, and IPv6/mixed-address destinations. If your callback is incompatible, keep delivery blocked until you have an equivalently protected transport.
 
-For **Sites**, use only your own returned Site identity, private audience, and plugin. The Sites adapter trusts a verified identity header only behind Sites Dispatch; using it on a publicly reachable Node server would allow spoofing. This Node transport is not a Sites Worker implementation. A DNS precheck followed by ordinary `fetch` does not establish connection-time IP protection; `resolveOverride` is not arbitrary callback IP pinning. This repository has no verified live Sites transport, production store, or confirmed Sites Events discovery. Keep real sending off while those requirements remain unresolved. See [connection constraints](private-connection.md) and [Cloudflare Request options](https://developers.cloudflare.com/workers/runtime-apis/request/).
+For **Sites**, use only your own returned Site identity, private audience, and plugin. The Sites adapter trusts a verified identity header only behind Sites Dispatch; using it on a publicly reachable Node server would allow spoofing. This Node transport is not a Sites Worker implementation. A DNS precheck followed by ordinary `fetch` does not establish connection-time IP protection; `resolveOverride` is not arbitrary callback IP pinning. The D1 adapter and dispatch/revocation controls are implemented, but live Sites D1 configuration, Worker behavior, outbound transport, and Events discovery remain unverified. Keep real sending off while those requirements remain unresolved. See [connection constraints](private-connection.md) and [Cloudflare Request options](https://developers.cloudflare.com/workers/runtime-apis/request/).
 
 ## 5. Verify each stage separately
 

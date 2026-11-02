@@ -12,6 +12,31 @@ const signed = {
 };
 const payload = { headers: signed, body: '{"challenge":"test"}' };
 
+test('owner permit is rechecked after DNS and before creating a socket', async t => {
+  const { lookup, requests } = network(t);
+  const transport = createPinnedCallbackTransport();
+  assert.equal(transport.beforeConnectGuard, true);
+  await assert.rejects(transport.post(destination, { ...payload, beforeConnect: async () => {
+    assert.equal(lookup.mock.callCount(), 1);
+    assert.equal(requests.length, 0);
+    return false;
+  } }), { code: 'dispatch_revoked' });
+  assert.equal(requests.length, 0);
+  await transport.post(destination, { ...payload, beforeConnect: async () => true });
+  assert.equal(requests.length, 1);
+});
+
+test('timeout of a stalled permit check cannot create a late socket', async t => {
+  const { requests } = network(t);
+  let finish;
+  const gate = new Promise(resolve => { finish = resolve; });
+  await assert.rejects(createPinnedCallbackTransport({ timeoutMs: 10 }).post(destination,
+    { ...payload, beforeConnect: () => gate }), { code: 'timeout' });
+  finish(true);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(requests.length, 0);
+});
+
 // Both DNS and HTTPS are mocked in every test: no callback or socket is created.
 function network(t, { addresses = [{ address: '8.8.8.8', family: 4 }], status = 200,
   headers = {}, chunks = ['{"challenge":"test"}'], complete = true, hang = false,

@@ -14,8 +14,10 @@ const checks = [], requests = [], pageErrors = [], blockedRequests = [], probes 
 const delayed = [];
 const fixture = {
   marker: false, loopbackTestMarker: false, statusDelay: false, unsubscribeDelay: false,
-  eventMode: 'auto', unsubscribeAccepted: true,
-  status: { authenticated: true, subscriptionActive: true, deliveryReady: true, delivery: 'mcp-webhook', testMode: false },
+  eventMode: 'auto', statusHttp: 200, unsubscribeHttp: 200,
+  unsubscribeResult: { unsubscribed: true, delivery: 'mcp-webhook', stopState: 'confirmed', pendingDispatches: 0 },
+  status: { authenticated: true, subscriptionActive: true, deliveryReady: true, delivery: 'mcp-webhook', testMode: false,
+    stopState: 'not-stopped', pendingDispatches: 0 },
 };
 let browser, failure;
 const acknowledge = (event, overrides = {}) => ({ accepted: true, eventId: event.id,
@@ -38,11 +40,11 @@ try {
       requests.push({ path: url.pathname, method: request.method(), body, headers: request.headers() });
       if (url.pathname === '/api/bridge/status') {
         if (fixture.statusDelay) { delayed.push(route); return; }
-        await reply(fixture.status); return;
+        await reply(fixture.status, fixture.statusHttp); return;
       }
       if (url.pathname === '/api/bridge/unsubscribe') {
         if (fixture.unsubscribeDelay) { delayed.push(route); return; }
-        await reply({ unsubscribed: fixture.unsubscribeAccepted, delivery: 'mcp-webhook' }); return;
+        await reply(fixture.unsubscribeResult, fixture.unsubscribeHttp); return;
       }
       if (url.pathname === '/api/bridge/events') {
         assert.ok(validateMotionEvent(body), 'Only the strict metadata event may leave the browser');
@@ -104,7 +106,8 @@ try {
     await page.waitForFunction(() => !/** @type {HTMLButtonElement} */ (document.getElementById('bridge-check')).disabled);
   };
   const ready = async () => {
-    fixture.status = { authenticated: true, subscriptionActive: true, deliveryReady: true, delivery: 'mcp-webhook', testMode: false };
+    fixture.status = { authenticated: true, subscriptionActive: true, deliveryReady: true, delivery: 'mcp-webhook', testMode: false,
+      stopState: 'not-stopped', pendingDispatches: 0 };
     await page.selectOption('#bridge-destination', 'private');
     await statusCheck();
     assert.equal(await page.locator('#bridge-enable').isDisabled(), false);
@@ -145,14 +148,17 @@ try {
   await assertOff();
   assert.equal(requests.length, 0);
   for (const flags of [
-    { authenticated: false, subscriptionActive: false, deliveryReady: false },
-    { authenticated: true, subscriptionActive: false, deliveryReady: false },
-    { authenticated: true, subscriptionActive: true, deliveryReady: false },
+    { authenticated: false, subscriptionActive: false, deliveryReady: false, stopState: 'confirmed', pendingDispatches: 0 },
+    { authenticated: true, subscriptionActive: false, deliveryReady: false, stopState: 'confirmed', pendingDispatches: 0 },
+    { authenticated: true, subscriptionActive: true, deliveryReady: false, stopState: 'not-stopped', pendingDispatches: 0 },
+    { authenticated: true, subscriptionActive: true, deliveryReady: false, stopState: 'not-stopped', pendingDispatches: 1 },
   ]) {
     fixture.status = { ...fixture.status, ...flags };
     await statusCheck();
     assert.equal(await page.locator('#bridge-enable').isDisabled(), true);
   }
+  assert.match(await page.locator('#bridge-private-status').textContent(), /existing dispatch is settling/);
+  assert.equal(await page.locator('#bridge-unsubscribe').isDisabled(), false);
   await ready();
   assert.equal(requests.filter(request => request.method === 'POST').length, 0);
   assert.equal(await page.locator('#bridge-disable').isDisabled(), true);
@@ -174,10 +180,91 @@ try {
   await stopDemo(); await page.click('#demo'); await stopDemo(); await settle();
   assert.equal(requests.length, disabledCount);
   await page.click('#bridge-unsubscribe');
-  await page.waitForFunction(() => document.getElementById('bridge-private-status').textContent.includes('Unsubscription confirmed'));
+  await page.waitForFunction(() => document.getElementById('bridge-connection').textContent === 'Delivery stop: confirmed');
   await assertOff();
+  assert.match(await page.locator('#bridge-private-status').textContent(), /Accepted callbacks cannot be recalled/);
   assert.equal(requests.at(-1).path, '/api/bridge/unsubscribe');
   checks.push('Disable stops browser delivery without unsubscribing; a separate explicit unsubscribe request confirms removal');
+
+  await ready();
+  fixture.unsubscribeResult = { unsubscribed: true, delivery: 'mcp-webhook', stopState: 'pending', pendingDispatches: 1 };
+  fixture.unsubscribeHttp = 202;
+  await page.click('#bridge-unsubscribe');
+  await page.waitForFunction(() => document.getElementById('bridge-connection').textContent === 'Delivery stop: pending');
+  await assertOff();
+  assert.equal(await page.locator('#bridge-unsubscribe').isDisabled(), true);
+  assert.match(await page.locator('#bridge-private-status').textContent(), /admitted dispatch is still settling/);
+  assert.match(await page.locator('#bridge-private-status').textContent(), /Accepted callbacks cannot be recalled/);
+  const pendingStopCount = requests.length;
+  const unsubscribeCount = requests.filter(request => request.path === '/api/bridge/unsubscribe').length;
+  await settle();
+  assert.equal(requests.length, pendingStopCount);
+  fixture.status = { ...fixture.status, subscriptionActive: false, deliveryReady: false, stopState: 'pending', pendingDispatches: 1 };
+  await statusCheck();
+  assert.equal(await page.locator('#bridge-connection').textContent(), 'Delivery stop: pending');
+  await assertOff();
+  fixture.statusHttp = 503;
+  await statusCheck();
+  assert.match(await page.locator('#bridge-private-status').textContent(), /could not be confirmed/);
+  assert.notEqual(await page.locator('#bridge-connection').textContent(), 'Delivery stop: confirmed');
+  await assertOff();
+  fixture.statusHttp = 200;
+  fixture.status = { ...fixture.status, stopState: 'confirmed', pendingDispatches: 0 };
+  await statusCheck();
+  assert.equal(await page.locator('#bridge-connection').textContent(), 'Delivery stop: confirmed');
+  assert.match(await page.locator('#bridge-private-status').textContent(), /no dispatch is pending/);
+  await assertOff();
+  fixture.statusDelay = true;
+  const cancelledStatus = page.waitForRequest(request => request.url().endsWith('/api/bridge/status'));
+  await page.click('#bridge-check'); await cancelledStatus;
+  assert.notEqual(await page.locator('#bridge-connection').textContent(), 'Delivery stop: confirmed');
+  await page.click('#bridge-disable');
+  assert.notEqual(await page.locator('#bridge-connection').textContent(), 'Delivery stop: confirmed');
+  await assertOff();
+  await clearDelayed(); fixture.statusDelay = false;
+  assert.equal(requests.filter(request => request.path === '/api/bridge/unsubscribe').length, unsubscribeCount);
+  checks.push('A 202 unsubscribe remains pending until explicit status confirms zero dispatches; errors never claim a stop or trigger retries');
+
+  for (const invalidState of [
+    { stopState: 'pending', pendingDispatches: 0, http: 202 },
+    { stopState: 'confirmed', pendingDispatches: 1, http: 200 },
+    { stopState: 'unknown', pendingDispatches: 0, http: 200 },
+    { stopState: 'pending', pendingDispatches: 2, http: 202 },
+    { stopState: 'pending', pendingDispatches: 1, http: 200 },
+    { stopState: 'confirmed', pendingDispatches: 0, http: 202 },
+    { stopState: 'confirmed', pendingDispatches: 0, http: 200, delivery: 'other' },
+    { stopState: 'confirmed', pendingDispatches: 0, http: 200, delivery: undefined },
+    { stopState: undefined, pendingDispatches: undefined, http: 200 },
+  ]) {
+    await ready();
+    fixture.unsubscribeResult = { unsubscribed: true, delivery: Object.hasOwn(invalidState, 'delivery') ? invalidState.delivery : 'mcp-webhook',
+      stopState: invalidState.stopState, pendingDispatches: invalidState.pendingDispatches };
+    fixture.unsubscribeHttp = invalidState.http;
+    await page.click('#bridge-unsubscribe');
+    await page.waitForFunction(() => document.getElementById('bridge-private-status').textContent.includes('Unsubscription could not be confirmed'));
+    await assertOff();
+    assert.equal(await page.locator('#bridge-unsubscribe').isDisabled(), true);
+    assert.notEqual(await page.locator('#bridge-connection').textContent(), 'Delivery stop: confirmed');
+    const invalidCount = requests.length;
+    await settle();
+    assert.equal(requests.length, invalidCount);
+  }
+  fixture.unsubscribeResult = { unsubscribed: true, delivery: 'mcp-webhook', stopState: 'confirmed', pendingDispatches: 0 };
+  fixture.unsubscribeHttp = 200;
+  for (const invalidState of [
+    { subscriptionActive: false, deliveryReady: false, stopState: 'confirmed', pendingDispatches: 1 },
+    { subscriptionActive: false, deliveryReady: false, stopState: 'pending', pendingDispatches: 0 },
+    { subscriptionActive: false, deliveryReady: false, stopState: 'not-stopped', pendingDispatches: 0 },
+    { subscriptionActive: true, deliveryReady: true, stopState: 'not-stopped', pendingDispatches: 1 },
+    { subscriptionActive: true, deliveryReady: false, stopState: 'not-stopped', pendingDispatches: 2 },
+  ]) {
+    fixture.status = { ...fixture.status, ...invalidState };
+    await statusCheck();
+    assert.match(await page.locator('#bridge-private-status').textContent(), /could not be confirmed/);
+    await assertOff();
+    assert.notEqual(await page.locator('#bridge-connection').textContent(), 'Delivery stop: confirmed');
+  }
+  checks.push('Bounded stop-state/count pairs and matching HTTP statuses are required; contradictory or unknown states fail closed');
 
   for (const eventMode of ['wrong-id', 'wrong-delivery', 'unknown-outcome', 'reject']) {
     fixture.eventMode = eventMode;

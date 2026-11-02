@@ -1,5 +1,6 @@
 import { eventDefinition, toMcpEvent } from './mcp-events.js';
 import { validateMotionEvent } from '../src/bridge.js';
+import { isD1Store } from './d1-store.js';
 
 const MAX_BYTES = 8192;
 const FRESH_MS = 300000;
@@ -84,7 +85,7 @@ function parameters(params, subscribe) {
     url: callbackUrl(params.delivery.url), secret: subscribe ? params.delivery.secret : null, ttl };
 }
 function newState() {
-  return { epoch: 0, subscription: null, ids: {}, minuteStart: 0, minuteCount: 0, lastMotionAt: null };
+  return { epoch: 0, subscription: null, ids: {}, minuteStart: 0, minuteCount: 0, lastMotionAt: null, dispatch: null };
 }
 function prune(state, now) {
   for (const [id, entry] of Object.entries(state.ids)) if (entry.expires <= now) delete state.ids[id];
@@ -100,9 +101,9 @@ function prune(state, now) {
  * expiry/deletion, encryption of secrets at rest, and isolation by the supplied key.
  * Its transaction(owner, mutate) loads state (newState() for a missing owner),
  * commits all mutations atomically, and returns the mutator's cloned return value.
- * Atomic storage alone is insufficient for multiple dispatch workers: a production
- * adapter must fence revocation against connection creation across all workers.
- * Only the explicit in-process synthetic configuration is exercised here.
+ * Atomic storage alone cannot recall an admitted HTTP request. The service retains
+ * a durable dispatch permit until its transport actually settles and reports a
+ * pending stop while that permit exists. This memory adapter is only a test double.
  */
 export function createSyntheticMemoryStore({ maxOwners = 128 } = {}) {
   if (!Number.isSafeInteger(maxOwners) || maxOwners < 1 || maxOwners > 1024) throw new TypeError('Invalid synthetic store capacity');
@@ -124,14 +125,19 @@ export function createSyntheticMemoryStore({ maxOwners = 128 } = {}) {
  * Server-only service. The default has no store or network transport and fails closed.
  * Test transports must identify themselves as kind:'synthetic-test'. A production
  * transport is a trusted server-created instance with kind:'safe-https',
- * productionSafe:true and post(url,{headers,body,signal})->{status,body:string}.
+ * productionSafe:true, beforeConnectGuard:true and
+ * post(url,{headers,body,signal,beforeConnect})->{status,body:string}.
+ * beforeConnect must be checked after DNS validation immediately before connection.
+ * Production storage must come from createD1Store; Sites installs no transport yet.
  * These are adapter contracts, never flags accepted from a client request.
  */
-export function createEventService({ store = null, transport = null, now = () => Date.now(), timeoutMs = 5000 } = {}) {
+export function createEventService({ store = null, transport = null, now = () => Date.now(), timeoutMs = 5000, revocationPollMs = 50 } = {}) {
   if (!Number.isFinite(timeoutMs) || timeoutMs < 1 || timeoutMs > 10000) throw new TypeError('Invalid callback timeout');
-  const testMode = store?.kind === 'synthetic-memory' && transport?.kind === 'synthetic-test';
-  const ready = Boolean(store?.transaction && (testMode || (store?.kind === 'durable' && store.atomic === true &&
-    store.encryptedSecrets === true && transport?.kind === 'safe-https' && transport.productionSafe === true)) && typeof transport?.post === 'function');
+  if (!Number.isInteger(revocationPollMs) || revocationPollMs < 5 || revocationPollMs > 1000) throw new TypeError('Invalid revocation poll interval');
+  const durable = isD1Store(store);
+  const testMode = (store?.kind === 'synthetic-memory' || durable) && transport?.kind === 'synthetic-test';
+  const ready = Boolean(store?.transaction && (testMode || (durable && transport?.kind === 'safe-https' &&
+    transport.productionSafe === true && transport.beforeConnectGuard === true)) && typeof transport?.post === 'function');
   const configurationBlock = !store ? 'durable-store-required' : !transport ? 'safe-transport-required' : !ready ? 'unverified-storage-or-transport' : null;
   const inflight = new Map();
   const pendingSubscriptions = new Map();
@@ -169,10 +175,46 @@ export function createEventService({ store = null, transport = null, now = () =>
     const content = `${id}.${timestamp}.${body}`;
     const signatures = [`v1,${await signature(subscription.secret, content)}`];
     if (subscription.previousSecret && subscription.previousSecretUntil > now()) signatures.push(`v1,${await signature(subscription.previousSecret, content)}`);
-    if (controller.signal.aborted || !await active(owner, subscription.generation)) throw new Error('Subscription disabled');
+    if (controller.signal.aborted) throw new Error('Subscription disabled');
     const remaining = subscription.expiresAt - now();
     if (remaining <= 0) throw new Error('Subscription expired');
-    let timer, onAbort;
+    const dispatchId = crypto.randomUUID();
+    const dispatchEpoch = await store.transaction(owner, state => {
+      prune(state, now());
+      if (state.subscription?.generation !== subscription.generation || controller.signal.aborted) throw new Error('Subscription disabled');
+      if (state.dispatch) throw new EventServiceError(-32000, 'A prior dispatch is not settled', 'dispatch_pending');
+      state.dispatch = { id: dispatchId, epoch: state.epoch, generation: subscription.generation,
+        phase: 'reserved', startedAt: now(), deadlineAt: now() + Math.min(timeoutMs, remaining), revocationRequested: false };
+      return state.epoch;
+    });
+    // A permit is never freed by its deadline. A paused worker might still resume.
+    // Revocation blocks new admissions; already admitted remote work is reported
+    // as pending until the real transport promise settles (not merely a timeout).
+    const release = () => store.transaction(owner, state => {
+      if (state.dispatch?.id === dispatchId) state.dispatch = null;
+    });
+    const permitted = () => store.transaction(owner, state => {
+      prune(state, now());
+      const dispatch = state.dispatch;
+      return dispatch?.id === dispatchId && dispatch.epoch === state.epoch && !dispatch.revocationRequested &&
+        state.subscription?.generation === subscription.generation && now() < dispatch.deadlineAt;
+    });
+    const beforeConnect = async () => {
+      if (controller.signal.aborted) return false;
+      const allowed = await permitted();
+      if (!allowed) controller.abort('disabled');
+      return allowed && !controller.signal.aborted;
+    };
+    let timer, pollTimer, onAbort, pollingStopped = false, networkSettled = false, operationLaunched = false;
+    const poll = async () => {
+      try {
+        const allowed = await permitted();
+        // A completed transport releases its permit. A poll finishing afterwards
+        // must not mistake that normal release for cross-worker revocation.
+        if (!pollingStopped && !networkSettled && !allowed) controller.abort('disabled');
+      } catch { if (!pollingStopped && !networkSettled) controller.abort('storage-unavailable'); }
+      if (!pollingStopped && !networkSettled && !controller.signal.aborted) pollTimer = setTimeout(poll, revocationPollMs);
+    };
     try {
       const cancelled = new Promise((resolve, reject) => {
         onAbort = () => reject(new Error(controller.signal.reason === 'timeout' ? 'Callback timeout' : 'Subscription disabled'));
@@ -181,26 +223,54 @@ export function createEventService({ store = null, transport = null, now = () =>
       });
       timer = setTimeout(() => controller.abort(remaining <= timeoutMs ? 'expired' : 'timeout'), Math.min(timeoutMs, remaining));
       controller.signal.throwIfAborted();
-      const response = await Promise.race([transport.post(subscription.url, { body, signal: controller.signal, headers: {
-        'Content-Type': 'application/json', 'webhook-id': id, 'webhook-timestamp': timestamp,
-        'webhook-signature': signatures.join(' '), 'X-MCP-Subscription-Id': subscription.id,
-      } }), cancelled]);
+      pollTimer = setTimeout(poll, revocationPollMs);
+      operationLaunched = true;
+      const operation = (async () => {
+        try {
+          if (!await beforeConnect()) throw new Error('Subscription disabled');
+          await store.transaction(owner, state => {
+            if (state.dispatch?.id !== dispatchId || state.dispatch.revocationRequested || state.epoch !== state.dispatch.epoch) throw new Error('Subscription disabled');
+            state.dispatch.phase = 'inflight';
+          });
+          controller.signal.throwIfAborted();
+          return await transport.post(subscription.url, { body, signal: controller.signal, beforeConnect, headers: {
+            'Content-Type': 'application/json', 'webhook-id': id, 'webhook-timestamp': timestamp,
+            'webhook-signature': signatures.join(' '), 'X-MCP-Subscription-Id': subscription.id,
+          } });
+        } finally {
+          networkSettled = true;
+          await release();
+        }
+      })();
+      const response = await Promise.race([operation, cancelled]);
       if (controller.signal.aborted || !await active(owner, subscription.generation)) throw new Error('Subscription disabled');
       if (!response || !Number.isInteger(response.status) || typeof response.body !== 'string' || encoder.encode(response.body).byteLength > MAX_BYTES) throw new Error('Invalid callback response');
-      return response;
+      return { ...response, dispatchEpoch };
     } finally {
-      clearTimeout(timer);
+      pollingStopped = true;
+      clearTimeout(timer); clearTimeout(pollTimer);
       if (onAbort) controller.signal.removeEventListener('abort', onAbort);
+      if (!operationLaunched) await release();
+      else if (!networkSettled) await store.transaction(owner, state => {
+        if (state.dispatch?.id === dispatchId) {
+          state.dispatch.phase = 'uncertain';
+          state.dispatch.revocationRequested = true;
+        }
+      });
     }
   }
   async function status(principal) {
     const owner = ownerKey(principal);
     if (!owner) return { authenticated: false, subscriptionActive: false, deliveryReady: false,
-      blockedReason: 'unauthenticated', delivery: 'mcp-webhook', testMode };
-    const subscription = store ? await store.transaction(owner, state => { prune(state, now()); return state.subscription; }) : null;
+      blockedReason: 'unauthenticated', delivery: 'mcp-webhook', testMode, pendingDispatches: 0, stopState: 'confirmed' };
+    const state = store ? await store.transaction(owner, state => { prune(state, now()); return state; }) : null;
+    const subscription = state?.subscription;
     const subscriptionActive = subscription?.state === 'active';
-    return { authenticated: true, subscriptionActive, deliveryReady: ready && subscriptionActive,
-      blockedReason: configurationBlock || (subscriptionActive ? null : 'no-active-subscription'), delivery: 'mcp-webhook', testMode };
+    const pendingDispatches = state?.dispatch ? 1 : 0;
+    return { authenticated: true, subscriptionActive, deliveryReady: ready && subscriptionActive && !pendingDispatches,
+      blockedReason: configurationBlock || (pendingDispatches ? 'dispatch_pending' : subscriptionActive ? null : 'no-active-subscription'),
+      delivery: 'mcp-webhook', testMode, pendingDispatches,
+      stopState: subscriptionActive ? 'not-stopped' : pendingDispatches ? 'pending' : 'confirmed' };
   }
   async function subscribe(principal, params) {
     const owner = requireOwner(principal), parsed = parameters(params, true);
@@ -214,6 +284,7 @@ export function createEventService({ store = null, transport = null, now = () =>
       const reserved = await store.transaction(owner, state => {
         prune(state, now());
         if (state.epoch !== epoch) throw new EventServiceError(-32000, 'Subscription was disabled', 'disabled');
+        if (state.dispatch) throw new EventServiceError(-32000, 'A prior dispatch is not settled', 'dispatch_pending');
         if (state.subscription && state.subscription.id !== id) throw new EventServiceError(-32000, 'One subscription per owner is allowed', 'subscription_limit');
         if (state.subscription?.state === 'verifying') throw new EventServiceError(-32000, 'Subscription verification is pending', 'verification_pending');
         if (state.subscription?.state === 'active' && state.subscription.secret === parsed.secret) {
@@ -261,9 +332,14 @@ export function createEventService({ store = null, transport = null, now = () =>
   }
   async function disable(principal) {
     const owner = requireOwner(principal);
+    const pending = store ? await store.transaction(owner, state => {
+      state.epoch++; state.subscription = null;
+      if (state.dispatch) state.dispatch.revocationRequested = true;
+      return Boolean(state.dispatch);
+    }) : false;
     abortOwner(owner);
-    if (store) await store.transaction(owner, state => { state.epoch++; state.subscription = null; });
-    return { status: 200, body: { unsubscribed: true, delivery: 'mcp-webhook' } };
+    return { status: pending ? 202 : 200, body: { unsubscribed: true, delivery: 'mcp-webhook',
+      stopState: pending ? 'pending' : 'confirmed', pendingDispatches: pending ? 1 : 0 } };
   }
   async function unsubscribe(principal, params) {
     const owner = requireOwner(principal), parsed = parameters(params, false);
@@ -273,7 +349,9 @@ export function createEventService({ store = null, transport = null, now = () =>
         if (state.subscription && state.subscription.id !== id) return false;
         // Also fence a subscribe still hashing its identity before reservation.
         // Otherwise an unsubscribe could return before that older call activates.
-        state.epoch++; state.subscription = null; return true;
+        state.epoch++; state.subscription = null;
+        if (state.dispatch) state.dispatch.revocationRequested = true;
+        return true;
       });
       if (removed) abortOwner(owner);
     }
@@ -315,6 +393,7 @@ export function createEventService({ store = null, transport = null, now = () =>
       if (!subscription || subscription.state !== 'active') return drop('blocked', 409, 'no-active-subscription');
       if (event.type !== 'motion.detected') return drop('filtered', 200, 'lifecycle-not-delivered');
       if (event.mode === 'synthetic' && !subscription.arguments.includeSynthetic) return drop('filtered', 200, 'synthetic-disabled');
+      if (state.dispatch) return drop('blocked', 409, 'dispatch_pending');
       if (now() - state.minuteStart >= 60000) { state.minuteStart = now(); state.minuteCount = 0; }
       if (state.minuteCount >= MAX_PER_MINUTE || (state.lastMotionAt !== null && now() - state.lastMotionAt < MIN_INTERVAL_MS)) return drop('rate-limited', 429, 'motion-rate');
       state.minuteCount++; state.lastMotionAt = now();
@@ -322,24 +401,40 @@ export function createEventService({ store = null, transport = null, now = () =>
     });
     if (reserved.response) return reserved.response;
     const subscription = reserved.subscription, controller = register(owner);
-    let outcome = 'delivery-uncertain', statusCode = 502, reason = 'callback-unconfirmed';
+    let outcome = 'delivery-uncertain', statusCode = 502, reason = 'callback-unconfirmed', deliveryEpoch = null;
     try {
       const response = await postSigned(owner, subscription, toMcpEvent(event), event.id, controller);
+      deliveryEpoch = response.dispatchEpoch;
       if (response.status >= 200 && response.status < 300) { outcome = 'callback-accepted'; statusCode = 202; reason = null; }
       else {
         outcome = 'callback-rejected'; reason = 'callback-http-error';
-        if (response.status === 410) await disable(principal);
+        if (response.status === 410) {
+          // A response from an older generation cannot revoke a replacement.
+          const revoked = await store.transaction(owner, state => {
+            if (state.subscription?.generation !== subscription.generation || state.epoch !== deliveryEpoch) return false;
+            state.epoch++; state.subscription = null;
+            if (state.dispatch) state.dispatch.revocationRequested = true;
+            return true;
+          });
+          if (revoked) abortOwner(owner);
+        }
       }
     } catch {
       if (controller.signal.reason === 'disabled' || !await active(owner, subscription.generation)) { outcome = 'disabled'; statusCode = 409; reason = 'subscription-disabled'; }
       else reason = controller.signal.reason === 'timeout' ? 'timeout' : 'callback-unconfirmed';
     } finally { unregister(owner, controller); }
-    await store.transaction(owner, state => {
+    const recorded = await store.transaction(owner, state => {
+      prune(state, now());
+      const revoked = outcome === 'callback-accepted' && (controller.signal.aborted ||
+        state.subscription?.generation !== subscription.generation || state.epoch !== deliveryEpoch);
+      const result = revoked ? { outcome: 'disabled', status: 409, reason: 'subscription-disabled' }
+        : { outcome, status: statusCode, reason };
       if (state.ids[event.id]?.fingerprint === fingerprint) {
-        Object.assign(state.ids[event.id], { outcome, status: statusCode, reason });
+        Object.assign(state.ids[event.id], result);
       }
+      return result;
     });
-    return acknowledgement(event.id, outcome, statusCode, { duplicate: false, reason });
+    return acknowledgement(event.id, recorded.outcome, recorded.status, { duplicate: false, reason: recorded.reason });
   }
   function eventList(params = {}) {
     if (!keys(params, [], ['cursor']) || (params.cursor !== undefined && params.cursor !== null)) throw invalid();

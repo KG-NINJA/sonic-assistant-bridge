@@ -1,5 +1,10 @@
 // Build-time translation keeps both languages on the same detector implementation.
 const translations = {
+'購読は無効ですが、開始済みの配送の終了待ちです。送信は無効です。認証と購読を再確認してください。受理済みの callback は取り消せません。': 'The subscription is inactive, but an admitted dispatch is still settling. Sending is disabled. Check authentication and subscription again. Accepted callbacks cannot be recalled.',
+'購読は無効で、進行中の配送がないことを確認しました。送信は無効です。受理済みの callback は取り消せません。': 'The subscription is inactive and no dispatch is pending. Sending is disabled. Accepted callbacks cannot be recalled.',
+'配送停止：確認待ち': 'Delivery stop: pending',
+'配送停止：確認済み': 'Delivery stop: confirmed',
+'既存の配送処理が終了するまで送信を有効にできません。状態を再確認してください。': 'Sending cannot be enabled while an existing dispatch is settling. Check status again.',
 "非公開サイト：送信先を選び、認証と購読を確認してから送信を有効にしてください。": "Private site: choose a destination, check authentication and subscription, then enable sending.",
 "送信先はこのサイトの /api/bridge/events です。認証はブラウザのセッションを使い、秘密はサーバーだけで管理します。": "The destination is /api/bridge/events on this site. Authentication uses your browser session; secrets stay on the server.",
 "dot の受信：未確認": "dot receipt: unverified",

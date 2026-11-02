@@ -99,6 +99,16 @@ async function resolveAddress(hostname, signal) {
   return addresses[0].address;
 }
 
+async function checkAdmission(beforeConnect, signal) {
+  if (signal.aborted) throw abortReason(signal);
+  return new Promise((resolve, reject) => {
+    const abort = () => reject(abortReason(signal));
+    signal.addEventListener('abort', abort, { once: true });
+    Promise.resolve().then(beforeConnect).then(resolve, () => reject(failure('guard_failed')))
+      .finally(() => signal.removeEventListener('abort', abort));
+  });
+}
+
 function boundedInteger(value, maximum) {
   if (!Number.isSafeInteger(value) || value < 1 || value > maximum) throw failure('invalid_limit');
   return value;
@@ -118,20 +128,24 @@ export function createPinnedCallbackTransport({ timeoutMs = 10_000, maxRequestBy
 
   /**
    * @param {string} input
-   * @param {{headers?: Record<string, string>, body?: string, signal?: AbortSignal}} options
+   * @param {{headers?: Record<string, string>, body?: string, signal?: AbortSignal, beforeConnect?:()=>Promise<boolean>}} options
    * @returns {Promise<{status: number, body: string}>}
    */
-  async function post(input, { headers, body, signal: callerSignal } = {}) {
+  async function post(input, { headers, body, signal: callerSignal, beforeConnect } = {}) {
     const url = callbackURL(input);
     if (typeof body !== 'string' || Buffer.byteLength(body, 'utf8') < 1 ||
         Buffer.byteLength(body, 'utf8') > maxRequestBytes) throw failure('request_too_large');
     const checkedHeaders = requestHeaders(headers, Buffer.byteLength(body, 'utf8'));
     if (callerSignal !== undefined && !(callerSignal instanceof AbortSignal)) throw failure('invalid_signal');
+    if (beforeConnect !== undefined && typeof beforeConnect !== 'function') throw failure('invalid_guard');
     const timeout = new AbortController();
     const timer = setTimeout(() => timeout.abort(failure('timeout')), timeoutMs);
     const signal = callerSignal ? AbortSignal.any([callerSignal, timeout.signal]) : timeout.signal;
     try {
       const address = await resolveAddress(url.hostname, signal);
+      // This owner-permit guard complements DNS pinning. An already admitted
+      // request remains visible as pending during a concurrent unsubscribe.
+      if (beforeConnect && await checkAdmission(beforeConnect, signal) !== true) throw failure('dispatch_revoked');
       if (signal.aborted) throw abortReason(signal);
       return await new Promise((resolve, reject) => {
         let request;
@@ -203,5 +217,5 @@ export function createPinnedCallbackTransport({ timeoutMs = 10_000, maxRequestBy
     } finally { clearTimeout(timer); }
   }
 
-  return Object.freeze({ kind: 'safe-https', productionSafe: true, post });
+  return Object.freeze({ kind: 'safe-https', productionSafe: true, beforeConnectGuard: true, post });
 }

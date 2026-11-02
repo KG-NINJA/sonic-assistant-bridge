@@ -66,6 +66,7 @@ export function createBridgePanel() {
       if (!failed) delivery.textContent = '送信：無効 · ブラウザ内のプレビューのみ';
       if (cancelledKind === 'check' || cancelledKind === 'unsubscribe') {
         authenticated = false; subscriptionActive = false;
+        connection.textContent = 'dot の受信：未確認';
         privateStatus.textContent = cancelledKind === 'unsubscribe'
           ? '購読解除を確認できません。送信は無効です。状態を再確認してください。'
           : '認証と購読：未確認';
@@ -98,10 +99,23 @@ export function createBridgePanel() {
     clearTimeout(timeout);
     if (pending === controller) { pending = null; pendingKind = ''; controls(); }
   }
+  function validStopState(value, active) {
+    if (value.pendingDispatches !== 0 && value.pendingDispatches !== 1) return false;
+    if (active) return value.stopState === 'not-stopped';
+    return value.stopState === 'pending' ? value.pendingDispatches === 1
+      : value.stopState === 'confirmed' && value.pendingDispatches === 0;
+  }
+  function showStopState(stopState) {
+    privateStatus.textContent = stopState === 'pending'
+      ? '購読は無効ですが、開始済みの配送の終了待ちです。送信は無効です。認証と購読を再確認してください。受理済みの callback は取り消せません。'
+      : '購読は無効で、進行中の配送がないことを確認しました。送信は無効です。受理済みの callback は取り消せません。';
+    connection.textContent = stopState === 'pending' ? '配送停止：確認待ち' : '配送停止：確認済み';
+  }
 
   async function checkStatus() {
     if (failed || !privateSite || document.hidden) return;
     disconnect(); authenticated = false; subscriptionActive = false;
+    connection.textContent = 'dot の受信：未確認';
     privateStatus.textContent = '認証と購読を確認しています。送信は無効のままです。';
     const { controller, timeout } = startRequest('check');
     try {
@@ -112,21 +126,27 @@ export function createBridgePanel() {
       if (!response.ok) throw new Error('Status unavailable');
       const status = await response.json();
       if (typeof status.authenticated !== 'boolean' || typeof status.subscriptionActive !== 'boolean' ||
-        typeof status.deliveryReady !== 'boolean' || typeof status.testMode !== 'boolean' || status.delivery !== 'mcp-webhook') throw new Error('Invalid status');
+        typeof status.deliveryReady !== 'boolean' || typeof status.testMode !== 'boolean' || status.delivery !== 'mcp-webhook' ||
+        !validStopState(status, status.subscriptionActive) ||
+        (status.deliveryReady && (!status.authenticated || !status.subscriptionActive || status.pendingDispatches !== 0))) throw new Error('Invalid status');
       if (pending !== controller) return;
       authenticated = status.authenticated;
       subscriptionActive = authenticated && status.subscriptionActive;
-      privateReady = authenticated && subscriptionActive && status.deliveryReady;
-      privateStatus.textContent = !authenticated ? '認証を確認できません。このサイトにログインしてから再確認してください。'
-        : !subscriptionActive ? '有効な購読がありません。設定ガイドを確認してください。'
-        : !privateReady ? '購読はありますが、配送の準備ができていません。送信は無効です。'
-        : status.testMode === true ? 'テスト用の配送準備を確認しました。実配送ではありません。'
-        : '認証と配送準備を確認しました。dot の受信は未確認です。';
-      connection.textContent = status.testMode === true ? '模擬配送 · dot 未接続' : 'dot の受信：未確認';
+      privateReady = authenticated && subscriptionActive && status.deliveryReady && status.pendingDispatches === 0;
+      if (authenticated && !subscriptionActive) showStopState(status.stopState);
+      else {
+        privateStatus.textContent = !authenticated ? '認証を確認できません。このサイトにログインしてから再確認してください。'
+          : status.pendingDispatches === 1 ? '既存の配送処理が終了するまで送信を有効にできません。状態を再確認してください。'
+          : !privateReady ? '購読はありますが、配送の準備ができていません。送信は無効です。'
+          : status.testMode === true ? 'テスト用の配送準備を確認しました。実配送ではありません。'
+          : '認証と配送準備を確認しました。dot の受信は未確認です。';
+        connection.textContent = status.testMode === true ? '模擬配送 · dot 未接続' : 'dot の受信：未確認';
+      }
     } catch {
       if (pending === controller) {
         authenticated = false; subscriptionActive = false; privateReady = false;
         privateStatus.textContent = '認証と購読を確認できません。送信は無効です。ログイン状態と設定を確認してください。';
+        connection.textContent = 'dot の受信：未確認';
       }
     } finally { finishRequest(controller, timeout); }
   }
@@ -143,16 +163,17 @@ export function createBridgePanel() {
       });
       if (!response.ok) throw new Error('Unsubscribe unconfirmed');
       const result = await response.json();
-      if (result.unsubscribed !== true) throw new Error('Invalid unsubscribe acknowledgement');
+      if (result.unsubscribed !== true || result.delivery !== 'mcp-webhook' || !validStopState(result, false) ||
+        response.status !== (result.stopState === 'pending' ? 202 : 200)) throw new Error('Invalid unsubscribe acknowledgement');
       if (pending !== controller) return;
       subscriptionActive = false;
-      privateStatus.textContent = '購読解除を確認しました。送信は無効です。';
-      connection.textContent = 'dot 未接続';
+      showStopState(result.stopState);
     } catch {
       if (pending === controller) {
         privateStatus.textContent = '購読解除を確認できません。送信は無効です。状態を再確認してください。';
         // A timed-out write may have completed; recheck instead of blindly retrying.
         authenticated = false; subscriptionActive = false;
+        connection.textContent = 'dot の受信：未確認';
       }
     } finally { finishRequest(controller, timeout); }
   }

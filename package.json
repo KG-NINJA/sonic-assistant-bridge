@@ -9,7 +9,7 @@
     "demo:bridge": "node scripts/demo-bridge.js",
     "test": "node --test",
     "test:browser": "node scripts/browser-bridge-smoke.js",
-    "check": "node --check server.js && node --check src/dsp.js && node --check src/audio.js && node --check src/app.js && node --check src/scene.js && node --check src/bridge.js && node --check src/bridge-ui.js && node --check bridge/receiver.js && node --check bridge/mcp-events.js && node --check scripts/demo-bridge.js && node --check bridge/service.js && node --check bridge/private-handler.js && node --check bridge/https-callback.js",
+    "check": "node --check server.js && node --check src/dsp.js && node --check src/audio.js && node --check src/app.js && node --check src/scene.js && node --check src/bridge.js && node --check src/bridge-ui.js && node --check bridge/receiver.js && node --check bridge/mcp-events.js && node --check scripts/demo-bridge.js && node --check bridge/service.js && node --check bridge/private-handler.js && node --check bridge/https-callback.js && node --check bridge/d1-store.js && node --check bridge/sites-receiver.js",
     "lint": "eslint .",
     "typecheck": "tsc -p jsconfig.json",
     "build": "node scripts/build.js",

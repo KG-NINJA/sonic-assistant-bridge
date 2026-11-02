@@ -113,4 +113,19 @@ or secrets. No real microphone or physical speaker was used in cloud tests.
 
 実行結果は `artifacts/authenticated-events-unit.log`、`artifacts/browser-bridge-smoke.json`、`artifacts/browser-private-bridge-smoke.json`、`artifacts/browser-microphone-smoke.json`。試験用の固定署名データは公開された合成データであり、実サービスの秘密ではありません。
 
-本番の永続ストア、複数 Worker 間の解除と配送開始の制御、Sites 上での安全な callback 接続、Site plugin のイベント発見、会話での受信確認は残っています。[接続条件と制約](private-connection.md)を参照してください。既存の公開 Pages はこの作業で更新していません。
+この時点では本番の永続ストア、複数 Worker 間の解除と配送開始の制御、Sites 上での安全な callback 接続、Site plugin のイベント発見、会話での受信確認が残っていました。後続の実装は次の記録を参照してください。既存の公開 Pages はこの作業で更新していません。
+
+# D1 永続化と複数 Worker の停止試験（2026-11-02、未配備）
+
+同じ作業ブランチに、AES-GCM-256 の所有者別状態、D1 の primary 読取と更新番号による CAS、schema-only の移行 SQL、Sites 用の配送無効な組み立て口を追加しました。配送予約は所有者ごとに一件とし、他の Worker からの解除後は新規予約を拒否します。開始済み処理が終わるまで「停止確認待ち」を維持し、期限やタイムアウトだけで解放しません。
+
+- `npm test`：148 件成功、失敗 0。D1 ストア 14 件、D1 とサービスの統合 4 件、共有ストア上の複数サービスによる配送競合 11 件、接続直前の中止 2 件を追加。
+- D1 試験は Node 24.19 の実 SQLite と模擬 D1 API を使用。再起動、並行更新、書込み確定後の応答消失、暗号文・所有者・更新番号の改変、スキーマ不一致、鍵不一致を確認。本番 D1、read replica、Worker 実行環境を試験したものではありません。
+- 複数サービス試験は、解除前に予約した処理、DNS 検証中の解除、abort を無視する遅延応答、時計の飛び、秘密更新、CAS 再試行を模擬。解除後の遅い 2xx を成功にせず、古い 410 が新購読を解除しないことを確認。
+- `npm run lint`、`npm run typecheck`（英日 Pages ビルド含む）、`npm run check`、`npm run build`：成功。
+- `npm run test:browser`：12 群成功。マイク・AudioContext・外部要求・ページ例外 0。
+- `npm run test:private-bridge`：11 群成功。停止待ち／確定の区別と不正な状態の拒否を追加。56 件の要求はすべて模擬応答で、実認証・実購読・実 callback 配送ではありません。
+- `npm run test:microphone`：12 群成功。仮想マイク・合成 WAV・ミュートを使用し、英日画面、明示開始・停止、異常時の資源解放を確認。外部通信・イベント POST・ページ例外 0。
+- 公開ビルドとローカルサーバーから、D1・Sites サーバーコードと移行 SQL を取得できないことを確認。
+
+登録済みの同じ非公開 Site は未公開のままです。この実行環境には Sites の公式初期化・ソースヘルパーが配置されていません。実 D1 の接続・移行・実行時暗号鍵、Sites 上の安全な callback 接続と互換性フラグの反映、plugin の Events 発見、実購読と会話での受信は未検証です。既存 Pages と本体リポジトリは変更していません。[配備条件](durable-state.ja.md)と[残る制約](private-connection.md)を参照してください。
